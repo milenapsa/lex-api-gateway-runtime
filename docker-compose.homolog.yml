@@ -37,6 +37,35 @@ services:
     networks:
       - lex-homolog
 
+  lex-memory:
+    build:
+      context: https://github.com/milenapsa/lex-api.git#main
+      dockerfile: Dockerfile.memory
+    environment:
+      PORT: "8080"
+      LEX_MEMORY_DB: /data/mem.db
+      LEX_API_KEYS: ${LEX_MEMORY_API_KEYS:-homolog-readonly}
+      LEX_RATE_LIMIT_PER_MINUTE: "120"
+    expose:
+      - "8080"
+    restart: unless-stopped
+    volumes:
+      - lex-memory-data:/data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - lex-homolog
+
   lex-api-gateway:
     build:
       context: https://github.com/milenapsa/lex-api-gateway-runtime.git#main
@@ -44,6 +73,7 @@ services:
       PORT: "8090"
       LEX_UPSTREAM: ${LEX_UPSTREAM:?configure o Search Core interno}
       LEX_PROCESS_UPSTREAM: http://lex-process-researcher:8080
+      LEX_MEMORY_UPSTREAM: http://lex-memory:8080
       LEX_DEMO_REQUESTS_PER_HOUR: ${LEX_DEMO_REQUESTS_PER_HOUR:-20}
       LEX_COMMERCIAL_REQUESTS_PER_MINUTE: ${LEX_COMMERCIAL_REQUESTS_PER_MINUTE:-120}
       LEX_API_KEY: ${LEX_API_KEY:?defina no cofre de homologacao}
@@ -51,6 +81,8 @@ services:
       - "${LEX_GATEWAY_PORT:-18090}:8090"
     depends_on:
       lex-process-researcher:
+        condition: service_healthy
+      lex-memory:
         condition: service_healthy
     restart: unless-stopped
     read_only: true
@@ -70,6 +102,10 @@ services:
       start_period: 20s
     networks:
       - lex-homolog
+
+volumes:
+  lex-memory-data:
+    name: lex-memory-data-homolog
 
 networks:
   lex-homolog:
