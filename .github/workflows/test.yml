@@ -1,0 +1,23 @@
+name: test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+#Permissões mínimas para ler o contúdo do repositório.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@0v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Checagem sintética
+        run: python -m py_compile gateway.py
+      - name: Testes unitários
+        run: python -m unittest discover -s tests -v
