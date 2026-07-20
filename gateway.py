@@ -27,6 +27,19 @@ DATAJUD_PROCESS_PATH = re.compile(
 )
 
 
+def is_datajud_process_path(path: str) -> bool:
+    """Return True only for the allowlisted DataJud process routes."""
+    return DATAJUD_PROCESS_PATH.fullmatch(path) is not None
+
+
+def build_proxy_target(parsed: urllib.parse.ParseResult) -> str:
+    """Preserve only the parsed path and query when forwarding upstream."""
+    target = parsed.path
+    if parsed.query:
+        target += "?" + parsed.query
+    return target
+
+
 def allow(key: str, cap: int, window: int) -> tuple[bool, int, int]:
     now = time.monotonic()
     queue = buckets[key]
@@ -47,7 +60,7 @@ def call_json_upstream(
 ) -> tuple[int, bytes, dict]:
     headers = {
         "Accept": "application/json",
-        "User-Agent": "LexGateway/0.9",
+        "User-Agent": "LexGateway/0.9.1",
     }
     if body is not None:
         headers["Content-Type"] = "application/json"
@@ -62,7 +75,7 @@ def call_json_upstream(
 
 
 class H(BaseHTTPRequestHandler):
-    server_version = "LexGateway/0.9"
+    server_version = "LexGateway/0.9.1"
 
     def sendj(self, status: int, obj: dict, headers: dict | None = None) -> None:
         data = json.dumps(obj, ensure_ascii=False).encode()
@@ -130,9 +143,7 @@ class H(BaseHTTPRequestHandler):
         if not authorized:
             return
 
-        target = parsed.path
-        if parsed.query:
-            target += "?" + parsed.query
+        target = build_proxy_target(parsed)
 
         try:
             status, body, _ = call_json_upstream(
@@ -186,7 +197,7 @@ class H(BaseHTTPRequestHandler):
                 {
                     "status": "ok",
                     "service": "lex-api-gateway",
-                    "version": "0.9.0-contract",
+                    "version": "0.9.1-contract",
                     "demo_limit_per_hour": DEMO_LIMIT,
                     "commercial_limit_per_minute": COMM_LIMIT,
                     "commercial_auth": (
@@ -225,7 +236,7 @@ class H(BaseHTTPRequestHandler):
             self.proxy_datajud_get(parsed)
             return
 
-        if DATAJUD_PROCESS_PATH.fullmatch(path):
+        if is_datajud_process_path(path):
             self.proxy_datajud_get(parsed)
             return
 
@@ -346,4 +357,9 @@ class H(BaseHTTPRequestHandler):
         )
 
 
-ThreadingHTTPServer(("0.0.0.0", PORT), H).serve_forever()
+def run() -> None:
+    """Start the HTTP server. Kept behind a main guard for safe imports/tests."""
+    ThreadingHTTTPServer(("0.0.0.0", PORT), H).serve_forever()
+
+if __name__ == "__main__":
+    run()
