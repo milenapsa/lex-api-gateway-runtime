@@ -1,0 +1,76 @@
+name: lex-homolog
+
+services:
+  lex-process-researcher:
+    build:
+      context: https://github.com/milenapsa/lex-process-researcher.git#main
+    environment:
+      APP_ENV: homologation
+      APP_PORT: "8080"
+      HTTP_TIMEOUT_SECONDS: "20"
+      DATAJUD_BASE_URL: https://api-publica.datajud.cnj.jus.br
+      DATAJUD_API_KEY: ${DATAJUD_API_KEY:-}
+      DATAJUD_AUTO_DISCOVER_KEY: "true"
+      DATAJUD_KEY_PAGE_URL: https://datajud-wiki.cnj.jus.br/api-publica/acesso/
+      DATAJUD_KEY_CACHE_SECONDS: "21600"
+      DATAJUD_DEFAULT_HEALTH_TRIBUNAL: tjsc
+      DATAJUD_MAX_REQUESTS_PER_MINUTE: "100"
+      DATAJUD_MAX_CONCURRENCY: "4"
+    expose:
+      - "8080"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/v1/datajud/health', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - lex-homolog
+
+  lex-api-gateway:
+    build:
+      context: https://github.com/milenapsa/lex-api-gateway-runtime.git#main
+    environment:
+      PORT: "8090"
+      LEX_UPSTREAM: ${LEX_UPSTREAM:?configure o Search Core interno}
+      LEX_PROCESS_UPSTREAM: http://lex-process-researcher:8080
+      LEX_DEMO_REQUESTS_PER_HOUR: ${LEX_DEMO_REQUESTS_PER_HOUR:-20}
+      LEX_COMMERCIAL_REQUESTS_PER_MINUTE: ${LEX_COMMERCIAL_REQUESTS_PER_MINUTE:-120}
+      LEX_API_KEY: ${LEX_API_KEY:?defina no cofre de homologacao}
+    ports:
+      - "${LEX_GATEWAY_PORT:-18090}:8090"
+    depends_on:
+      lex-process-researcher:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - lex-homolog
+
+networks:
+  lex-homolog:
+    name: lex-homolog
